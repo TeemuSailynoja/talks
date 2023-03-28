@@ -1,0 +1,219 @@
+---
+title: "Assessing and Visualizing Simultaneous Simulation Error"
+subtitle: "PML Journal Club: Teemu Säilynoja"
+date: 2023-03-28
+bibliography: references.bib
+format: 
+  revealjs:
+    self-contained: true
+    theme: simple
+    # logo: ../aalto_logos/logo-quo.png
+    # css: logo.css
+---
+
+### Assessing and Visualizing Simultaneous Simulation Error
+
+Nathan Robertson[^1], James M. Flegal<sup>1</sup>, Dootika Vats[^2], Galin L. Jones[^3]
+
+Journal of Computational and Graphical Statistics 2021,
+Vol. 30, No. 2, 324–334
+
+[^1]: Department of Statistics,
+University of California, Riverside
+[^2]: Department of Mathematics and Statistics,
+Indian Institute of Technology Kanpur
+[^3]: School of Statistics,
+University of Minnesota
+[^4]: [https://www.tandfonline.com/doi/full/10.1080/10618600.2020.1824871](https://www.tandfonline.com/doi/full/10.1080/10618600.2020.1824871)
+
+## Motivation
+
+:::: {.columns}
+
+::: {.column width="40%"}
+"*Simultaneous estimation of means and quantiles has received little attention, despite being common practice.*"
+@Robertson2021
+:::
+
+::: {.column width="60%"}
+![](mixture1.png)
+:::
+
+::::
+
+
+## SCI: Summarising predictive distribution
+
+![](mixture2.png)
+
+
+## SCI: Method comparison
+![](boxplot.png)
+
+
+## SCI: Posterior intervals
+![](intervals.png)
+
+## Problem{.smaller}
+
+Let $\pi$ be a probability density with support $\mathcal X \in \mathbb R^d$ and $X\sim \pi$.
+
+Denote with $\mathbf{m}:\mathcal X \to \mathbb R^{p_1}$  and $\mathbf{q} : \mathcal X \to \mathbb R ^{p_2}$ the means and quantiles of interest.
+
+. . .
+
+Above,
+
+$$ m_i = \mathbb E_\pi\left(g_i(X)\right) = \int_{\mathcal X}g_i(x)\pi(dx),$$
+for some $g:\mathcal X \to \mathbb R^{p_1}$.
+
+. . .
+
+And
+
+$$ q_i = F_{h_i}^{-1}(p_{q_i}) = \inf\left\lbrace v : F_{h_i}(v)\geq p_{q_i}\right\rbrace,$$
+with $h:\mathcal X \to \mathbb R^{p_2}$, where $V = h_i(X)$ is distributed according to $F_{h_i}(v)$, which is absolutely continuous and has continuous density function $f_{h_i}(v)$.
+
+
+## Problem{.smaller}
+
+Let $\pi$ be a probability density with support $\mathcal X \in \mathbb R^d$ and $X\sim \pi$.
+
+Denote with $\mathbf{m}:\mathcal X \to \mathbb R^{p_1}$  and $\mathbf{q} : \mathcal X \to \mathbb R ^{p_2}$ the means and quantiles of interest.
+
+. . .
+
+1. We want better than marginal MCSEs, when estimating the uncertainty of $\mathbf m$ and $\mathbf q$.
+
+. . .
+
+2. Let $\nu = \begin{bmatrix}\mathbf m\\\mathbf q\end{bmatrix}$, and $\hat\nu$ a simulation based estimate of $\nu$.
+
+Even if we find $\Xi\in \mathbb R ^{p \times p}$ s.t. 
+
+$$(\hat\nu_n - \nu) \to \mathcal N(0, \Xi), \quad \text{as $n \to \infty$,}$$
+
+ visualizing the elliptical confidence regions is difficult.
+
+## Contributions
+
+1. Multivariate central limit theorem for any finite combination of sample means and quantiles under the assumption of a strongly mixing process. [^4]
+
+2. Fast algorithm for constructing hyperrectangular confidence regions. [^5]
+
+[^4]: Includes the standard Monte Carlo and Markov chain Monte Carlo settings.
+
+[^5]: Desired simultaneous coverage and a convenient marginal interpretation.
+
+## Multivariate CLT {.smaller}
+
+. . .
+
+Let $\left\lbrace X_t \right\rbrace$ be strictly stationary and strongly mixing.
+
+. . .
+
+Let $A_h$ be a $p_2 \times p_2$ diagonal matrix with $A_{h}[i,i] = f_{h_i}(q_i)$ and define
+$$
+\Lambda = \begin{bmatrix} I_{p_1 \times p_1} & 0_{p_1 \times p_2}\\ 0_{p_2 \times p_1} & A_h. \end{bmatrix}
+$$
+
+. . .
+
+If $Y_j = \begin{bmatrix} g(X_j), I(h(X_j) > \mathbf q)\end{bmatrix}^T$, and
+
+$$ \Sigma = \text{cov}\left(Y_1, Y_1\right) + \sum_{j=2}^\infty\text{cov}\left(Y_1, Y_j\right) + \text{cov}\left(Y_1, Y_j\right)^T$$
+is positive definite, then
+
+. . .
+
+$$\sqrt n (\hat\nu_n - \nu) \to \mathcal N(0, \Lambda^{-1}\Sigma\Lambda^{-1}).$$
+
+::: {.notes}
+The distribution function of $h_i$ needs to be absolutely continuous and twice continuously differentiable with the density function limited around the quantile values. Mixing needs to be fast enough and $g$ needs to have a limited L 2 + $delta$ norm for some positive delta.
+:::
+
+
+## Simultaneous Confidence Intervals {.smaller}
+
+![](ellipse.png)
+
+
+## Simultaneous Confidence Intervals {.smaller}
+
+Upper and lower $p$-dimensional confidence intervals for $\nu = \begin{bmatrix}\mathbf m \\ \mathbf q \end{bmatrix} \in \mathbb{R}^{p_1 + p_2}$.
+
+. . .
+
+Let $\hat\Lambda^{-1}\hat\Sigma\hat\Lambda^{-1}$ be a strongly consistent estimator of $\Lambda^{-1}\Sigma\Lambda^{-1}$.  
+
+. . .
+
+$$\begin{align}
+C_{SI}(z) :=& \prod_{i=1}^{p_1}\left[\bar m_{i} - z\frac{\hat\sigma_i}{n}, \bar m_{i} + z\frac{\hat\sigma_i}{n}\right]\prod_{j=1}^{p_2}\left[\hat q_{j} - z\frac{\hat\gamma_{j}}{n}, \bar q _{j} + z\frac{\hat\gamma_{j}}{n}\right]
+\end{align},$$
+
+where $\hat\gamma_j$ is the $j$th diagonal element of $\hat A_h^{-1}\hat\Sigma_h\hat A_h^{-1}$.
+
+. . .
+
+$C_{LB} = C_{SI}\left(\Phi^{-1}\left(1-\frac\alpha 2\right)\right)$ has coverage of at most $1-\alpha$.^[Uncorrected confidence intervals]
+
+$C_{UB} = C_{SI}\left(\Phi^{-1}\left(1-\frac\alpha {2p}\right)\right)$ has coverage of at least $1-\alpha$.^[Bonferroni-corrected confidence intervals]
+
+
+## Simultaneous Confidence Intervals {.smaller}
+
+Find $C_{\alpha} = C_{SI}(z_\alpha)$ with coverage $1 - \alpha$ s.t. $C_{LB}\subseteq C_{\alpha} \subseteq C_{UB}$
+
+::::: {.columns}
+
+:::: {.column}
+
+![](ellipse.png)
+
+::::
+
+:::: {.column}
+
+::: {.incremental}
+- 1-D optimization task w.r.t. $z\in \left[\Phi^{-1}\left(1-\frac\alpha 2\right), \Phi^{-1}\left(1-\frac\alpha {2p}\right)\right]$
+
+- Use quasi-monte carlo methods to evaluate the coverage level w.r.t. the multivariate normal distribution.
+
+:::
+
+::::
+
+:::::
+
+
+## Conclusion {.smaller}
+
+
+:::::{.columns}
+
+
+:::{.column}
+
+![](mixture1.png)
+
+:::
+
+::::{.column}
+
+:::{.incremental}
+
+ - Pay attention to the simultaneous uncertainty of all the quantities estimated.
+    - At least to justify the use of traditional visualizations with low uncertainty.
+ - @Robertson2021 provide a framework for a fast computational algorithm to estimate the simultaneous confidense intervals.
+
+:::
+::::
+:::::
+
+
+## References
+
+::: {#refs}
+:::
