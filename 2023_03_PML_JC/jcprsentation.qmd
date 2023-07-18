@@ -26,33 +26,30 @@ Indian Institute of Technology Kanpur
 University of Minnesota
 [^4]: [https://www.tandfonline.com/doi/full/10.1080/10618600.2020.1824871](https://www.tandfonline.com/doi/full/10.1080/10618600.2020.1824871)
 
-## Motivation
+## Motivation {.smaller}
 
-:::: {.columns}
+::::: {.columns}
 
-::: {.column width="40%"}
+:::: {.column width="40%"}
+::: {.incremental}
 "*Simultaneous estimation of means and quantiles has received little attention, despite being common practice.*"
 @Robertson2021
+
+- Is zero included in the 90% predictive interval?
+- Reproducibility of experiment?
 :::
+::::
 
 ::: {.column width="60%"}
 ![](mixture1.png)
 :::
 
-::::
+:::::
 
 
 ## SCI: Summarising predictive distribution
 
 ![](mixture2.png)
-
-
-## SCI: Method comparison
-![](boxplot.png)
-
-
-## SCI: Posterior intervals
-![](intervals.png)
 
 ## Problem{.smaller}
 
@@ -134,10 +131,27 @@ The distribution function of $h_i$ needs to be absolutely continuous and twice c
 :::
 
 
-## Simultaneous Confidence Intervals {.smaller}
+## Simultaneous Confidence Intervals
 
+::::: {.columns}
+
+:::{.column width="60%"}
 ![](ellipse.png)
+:::
 
+:::: {.column width="40%"}
+
+:::{.incremental}
+
+- Lower bound: coverage at most $1-\alpha$
+
+- Upper bound: coverage at least $1-\alpha$
+
+:::
+
+::::
+
+:::::
 
 ## Simultaneous Confidence Intervals {.smaller}
 
@@ -187,6 +201,14 @@ Find $C_{\alpha} = C_{SI}(z_\alpha)$ with coverage $1 - \alpha$ s.t. $C_{LB}\sub
 
 :::::
 
+## SCI: Method comparison
+![](boxplot.png)
+
+
+## SCI: Posterior intervals
+![](intervals.png)
+
+
 
 ## Conclusion {.smaller}
 
@@ -206,7 +228,7 @@ Find $C_{\alpha} = C_{SI}(z_\alpha)$ with coverage $1 - \alpha$ s.t. $C_{LB}\sub
 
  - Pay attention to the simultaneous uncertainty of all the quantities estimated.
     - At least to justify the use of traditional visualizations with low uncertainty.
- - @Robertson2021 provide a framework for a fast computational algorithm to estimate the simultaneous confidense intervals.
+ - @Robertson2021 provide a framework for a fast computational algorithm to estimate the simultaneous confidence intervals.
 
 :::
 ::::

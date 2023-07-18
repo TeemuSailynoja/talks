@@ -1,0 +1,555 @@
+---
+title: "WP: Visual Predictive Checks in Bayesian Workflows"
+author: "Teemu Säilynoja"
+date: "2023-07-18"
+format:
+  revealjs:
+    theme: simple
+    bibliography: "bibliography.bib"
+    self-contained: true
+    progress: true
+    title-slide-style: pandoc
+    smaller: true
+    # toc: true
+    # toc-depth: 2
+    # toc-title: "Outline"
+    # number-sections: true
+    number-depth: 2
+    code-fold: true
+    reference-location: section
+execute:
+  echo: false
+  warning: false
+  error: false
+  cache: false
+---
+
+```{r}
+library(ggplot2)
+library(ggdist)
+library(bayesplot)
+library(khroma)
+library(latex2exp)
+library(sfsmisc)
+library(patchwork)
+library(bayesflow)
+library(cmdstanr)
+
+source("helpers.R")
+source("kde_helpers.R")
+check_cmdstan_toolchain(fix = TRUE, quiet = TRUE)
+
+register_knitr_engine(override = FALSE)
+
+SEED <- 37645624
+
+set.seed(SEED)
+
+theme_set(good_theme)
+
+N <- 100
+K <- 100
+DIFF <- F
+```
+
+
+```{r}
+ecdf_limits <- ecdf_confidence_intervals(gamma = adjust_gamma_optimize(N, K, .95),
+                                         N = N,
+                                         K = K)
+
+x0 <- 0:K / K
+
+p0 <- ggplot(mapping = aes(x = x0)) +
+  geom_step(aes(y = ecdf_limits$lower / N  - DIFF * x0)) +
+  geom_step(aes(y = ecdf_limits$upper / N - DIFF * x0)) +
+  labs(
+    x = TeX("PIT"),
+    y = if (DIFF)
+      "ECDF Difference"
+    else
+      "ECDF",
+    colour = ""
+  )
+
+x1 <- rnorm(N, 1)
+
+x1[x1<0] <- 0
+
+p1 <- ggplot(mapping = aes(x = x1)) +
+  stat_density(
+    aes(colour = "Unbounded"),
+    bw = "SJ",
+    geom = "line",
+    size = 1,
+    show.legend = F
+  ) +
+  stat_density(
+    aes(x = x1, colour = "Known bounds"),
+    bw = "SJ",
+    geom = "line",
+    bounds = c(0, Inf),
+    size = 1,
+    show.legend = F
+  ) +
+  stat_slab(
+    aes(colour = "Bound detection"),
+    fill = NA,
+    normalize = "none",
+    scale = 1,
+    show.legend = F
+  ) +
+  geom_rug() +
+  labs(x = TeX("$x$"),
+       y = "KDE",
+       colour = "KDE Method: ") +
+  scale_colour_manual(
+    values = c("#009CFF", "#FF5C00", "#57A773"),
+    limits = c( "Unbounded", "Bound detection","Known bounds"),
+    breaks = c("Unbounded", "Bound detection", "Known bounds")
+  ) +
+  scale_fill_manual(
+    values = c("#009CFF", "#FF5C00", "#57A773"),
+    limits = c( "Unbounded", "Bound detection","Known bounds"),
+    breaks = c("Unbounded", "Bound detection", "Known bounds")
+  ) +
+  theme(legend.position = "bottom") +
+  scale_y_continuous(expand = c(0, NA))
+
+
+p2 <-
+  p0 + geom_step(aes(
+    y = ecdf(pit_from_densityplot(p1, 1, x1))(x0) - DIFF * x0,
+    colour = "Unbounded"
+  ),
+  size = 1) +
+  geom_step(aes(
+    y = ecdf(pit_from_densityplot(p1, 2, x1))(x0) - DIFF * x0,
+    colour = "Known bounds"
+  ),
+  size = 1) +
+  geom_step(aes(
+    y = ecdf(pit_from_densityplot(p1, 3, x1, ggdist_layer = T))(x0) - DIFF * x0,
+    colour = "Bound detection"
+  ),
+  size = 1) +
+  scale_colour_manual(
+    values = c("#009CFF", "#FF5C00", "#57A773"),
+    limits = c( "Unbounded", "Bound detection","Known bounds"),
+    breaks = c("Unbounded", "Bound detection", "Known bounds")
+  ) + theme(legend.position = "bottom")
+
+p3 <- ggplot(mapping = aes(x = x1)) + stat_dots(quantiles = 50)
+
+```
+
+```{r}
+n_obs <- 300
+lambda_true <- seq(10, 50, length.out = n_obs)
+n_models <- 15
+n_samples <- 500
+
+obs <- rpois(n_obs, lambda_true)
+  
+posteriors <- lapply(1:n_models, \(x) matrix(
+    rpois(n_obs * n_samples, rnorm(n_obs, lambda_true, 3)),
+    ncol = n_obs,
+    byrow = T
+  ))
+
+data_rooto_ppc <- function(y, # observations
+                           yreps # list of posterior samples model_idx: matrix[posterior_sample_idx, obs_idx]
+                           ) {
+  # Compute range of combined data
+  lims <- range(c(y, yreps))
+  left_limit_zero = lims[1] == 0
+  # Change observed counts to frequensies of observing a given count
+  y_counts <- numeric(lims[2] - lims[1] + 1)
+  y_table <- data.frame(table(y))
+  y_counts[1 + as.integer(levels(y_table$y)) - lims[1]] <- y_table$Freq
+
+  # repeat previous to every model and every posterior draw.
+  # Compute summary statistics.
+  y_rep_counts <- lapply(1:length(yreps), \(model_idx) {
+    counts <- t(apply(yreps[[model_idx]], 1, \(posterior_draw) {
+      draw_counts <- numeric(lims[2] - lims[1] + 1)
+      draw_table <- data.frame(table(posterior_draw))
+      draw_counts[1 + as.integer(levels(draw_table$posterior_draw)) - lims[1]] <- draw_table$Freq
+      draw_counts
+    }))
+    counts <- data.frame(count = lims[1]:lims[2],
+                         model = rep(model_idx, ncol(counts)),
+                         mean = colMeans(counts),
+                         sd = unlist(apply(counts, 2, sd)))
+    counts
+  })
+  y_rep_counts <- dplyr::bind_rows(y_rep_counts)
+
+  list(y = y_counts, y_rep = y_rep_counts, lims = lims)
+}
+
+
+rooto_data <- data_rooto_ppc(obs, posteriors)
+
+rooto_promo <- ggplot(rooto_data$y_rep, aes(color = as.factor(model), x = count, y = mean)) +
+  geom_point() +
+  geom_line(alpha = .2) +
+  geom_errorbar(aes(ymin = pmax(0,mean - sd), ymax = mean + sd)) +
+  geom_point(aes(x = count, y = freq),
+             data = data.frame(count = rooto_data$lims[1]:rooto_data$lims[2],
+                               freq = rooto_data$y),
+             size = 2,
+             inherit.aes = F,
+             colour = "Black") +
+  scale_y_sqrt(breaks = scales::pretty_breaks()) + theme(legend.position = "none") + labs(x = "Count", y = "Frequency")
+```
+
+
+
+
+## Visual Predictive Checks {.unlisted}
+
+::::{.columns}
+
+:::{.column width=60%}
+
+![ @gelman_bayesian_2020 ](figures/ppcs.png){width=100%}
+:::
+
+:::{.column width=40%}
+**A: Density plots**\
+@gabry_visualization_2019 focus mostly on checks for continuous data.
+
+**B: Summary statistic**\
+Another common visual PPC. Already more customised built.
+ 
+**C: Discrete observations**\
+Very common, but fewer tools for effective visual checks in use. 
+
+**D: Data split into groups**\
+Uses tools from A - C.
+:::
+::::
+
+## In Bayesian Workflows
+
+::::{.columns}
+
+:::{.column width=70%}
+![](figures/wfdiagram2.png){width=80%}
+:::
+
+:::{.column width=30% }
+
+ - Predictive checks present on many stages of Bayesian Workflows
+ 
+ - Early stages of model building can be very exploratory
+    
+ - Clear guidelines reduce ad-hoc decisions during the exploration and assessment
+    
+    $\Rightarrow$ less mistakes
+:::
+::::
+
+## Our work
+
+We provide structured recommendations on which visual checks to use.
+
+:::: {.columns}
+
+::: {.column width=30%}
+
+1. Continuous data
+    - Continuous and smooth
+    - Bounded
+    - Point masses
+  
+2. Counts
+    - Large domain
+    - Small domain
+  
+3. Discrete with small domain
+    - Bernoulli trial
+    - Categorical
+    - Ordinal
+
+:::
+
+::: {.column width=33%}
+
+
+![](figures/appdens.png){height=20%}
+
+![](figures/rooto_promo.png){height=20%}
+
+
+
+:::
+
+:::{.column width=33%}
+
+![](figures/appdiff.png){height=20%}
+
+![](figures/3_1_ecdf_plots-2.png){height=20%}
+:::
+
+::::
+
+:::::
+
+## Continuous data 
+#### Density plots and quantile dot plots
+
+Density plots show a KDE fit to the data.
+
+::::{.columns}
+:::{.column width=40%}
+ - When observation is not smooth, KDE can have large local error.
+ - Automated goodness-of-fit test to detect issues.
+    - We use our earlier graphical test (@sailynoja_graphical_2022).
+ - When issues detected use quantile dot plots (or histograms).
+   - Introduced by @kay_when_2016.
+
+:::
+:::{.column width=60%}
+
+```{r}
+#| fig-height: 4
+(p1 + p2) + plot_layout(guides = "collect") & theme(legend.position = "top")
+```
+
+
+```{r}
+#| fig-height: 4
+p3
+```
+    
+  <!-- ![](figures/cont_dens.png){width=100%} -->
+  <!-- ![](figures/cont_ecdf.png){width=100%} -->
+  <!-- ![](figucont_qdots.png.png){width=100%} -->
+:::
+::::
+
+## Counts
+#### Density plots and rootograms
+
+```{r}
+#| label: data generation
+N <- 250
+r <- 10
+x_1 <- rnbinom(n = N, size = r, .1)
+
+x_2 <- rnbinom(n = N, size = r, .5)
+```
+
+```{r}
+#| label: ecdf difference plot base
+
+ecdf_difference_limits <-
+  ecdf_confidence_intervals(gamma = adjust_gamma_optimize(N, N, .95),
+                            N = N,
+                            K = N)
+
+x0 <- 0:N / N
+
+p0 <- ggplot(mapping = aes(x = x0)) +
+  geom_step(aes(y = (ecdf_difference_limits$lower) / N)) +
+  geom_step(aes(y = (ecdf_difference_limits$upper) / N)) +
+  labs(x = "PIT",
+       y = "ECDF")
+```
+
+
+```{r}
+#| label: stan code
+model <- cmdstan_model("neg_binom.stan")
+```
+
+```{r}
+#| label: fit models
+#| message: false
+#| include: false
+
+fit1 <-
+  model$sample(data = list(N = N, r = r, n = x_1),
+               refresh = 0,
+               seed = SEED)
+fit2 <-
+  model$sample(data = list(N = N, r = r, n = x_2),
+               refresh = 0,
+               seed = SEED)
+```
+
+```{r}
+#| label: 3_1_densities
+pd1 <-
+  ppc_dens_overlay(
+    y = x_1,
+    yrep = fit1$draws(variables = "yrep", format = "matrix")[1:50, ],
+    bw = "SJ"
+  ) + geom_rug(aes(x = x), data = data.frame(x = x_1))
+pd2 <-
+  ppc_dens_overlay(
+    y = x_2,
+    yrep = fit2$draws(variables = "yrep", format = "matrix")[1:50, ],
+    bw = "SJ"
+  ) + geom_rug(aes(x = x), data = data.frame(x = x_2))
+```
+
+```{r}
+#| label: 3_1_ecdf_plots
+pd1_d <- p0 + geom_step(aes(y = ecdf(pit_from_densityplot(pd1, 1, x_1))(x0))) +
+  scale_colour_vibrant()
+
+
+pd2_d <- p0 + geom_step(aes(y = ecdf(pit_from_densityplot(pd2, 1, x_2))(x0))) +
+  scale_colour_vibrant()
+
+```
+
+```{r}
+p_rooto <- rooto_discrete(x_2,
+               fit2$draws(variables = "yrep", format = "matrix"),
+               linewidth = 2)
+```
+
+
+
+::::{.columns}
+
+:::{.column width=40%}
+
+- When the range of observed values is large, continuous density plots work well.
+- As range narrows, density plots mislead.
+    - In this case, rootograms are more practical.
+    - We modify these to emphasize the discreteness.
+- Again, goodness-of-fit testing can tell, when density plot fails.
+
+:::
+:::{.column width=60%}
+```{r}
+(pd1 + legend_none() + pd1_d) / (pd2 + legend_none() + pd2_d)
+```
+
+```{r}
+#| fig-height: 4
+p_rooto + legend_move()
+```
+
+
+:::
+::::
+
+## Small discrete domains
+#### Reliability diagrams
+
+::::{.columns}
+
+:::{.column width=60%}
+
+Currently, bar plots are most commonly used.
+
+ - Limited information even for a general visualization.
+ - Reliability diagrams give insight into possible calibration issues.
+    - Obervations are transformed to conditional event probabilities by assuming monotonicity with
+model predictions and using a pool-adjacent-violators algorithm.
+    - Algorithm proposed by @dimitriadis_stable_2021.
+
+:::
+:::{.column width=40%}
+
+```{r}
+library("rstanarm")
+library("loo")
+library("caret")
+
+invlogit <- plogis
+
+```
+
+
+```{r}
+data(wells)
+wells$dist100 <- wells$dist / 100
+wells$educ4 <- wells$educ / 4
+wells$c_dist100 <- wells$dist100 - mean(wells$dist100)
+wells$c_arsenic <- wells$arsenic - mean(wells$arsenic)
+wells$c_educ4 <- wells$educ4 - mean(wells$educ4)
+```
+
+
+```{r}
+fit_1 <- stan_glm(
+  switch ~ c_dist100 + c_arsenic + c_educ4 +
+    c_dist100:c_educ4 + c_arsenic:c_educ4,
+  family = binomial(link = "logit"),
+  data = wells,
+  refresh = 0
+)
+
+pred1 <- fitted(fit_1)
+```
+
+```{r}
+#| label: 4_1_binomial_ppc_bars
+#| fig-height: 4
+ppc_bars(y = wells$switch, yrep = posterior_predict(fit_1, draws = 1000))
+```
+
+
+```{r}
+#| label: 4_1_binomial_reliability_diagram
+#| fig-height: 4
+plot_dotted_reliabilitydiag(
+  y = wells$switch,
+  x = pred1,
+  fill_colour = "blue",
+  fill_alpha = .3,
+  cep_colour = "red"
+)
+```
+
+:::
+::::
+
+## Conclusion
+
+### Visual predictive checks
+
+ - Important part of Bayesian Workflows.
+ - Structured recommendations reduce mistakes.
+ - Density plots
+    - Don't forget to assess goodness-of-fit to data.
+ - Discrete data
+    - Reliability diagrams offer a good default.
+
+### Current stage
+
+ - Finalizing a submission to Journal of Visualization and Interaction (JoVI)
+   - open access and open review.
+   - Experimental track offers a chance to include interactivity.
+
+
+## Visual Predictive Checks {visibility="uncounted" .unlisted .unnumbered .small}
+
+### Prior predictive checks
+
+::::{.columns}
+
+:::{.column width=70%}
+
+![Effect of hyperparameters in predictions of a GP by @gelman2013bayesian ](figures/gelmanpriorpc.png){width=80% fig-align="left"}
+
+![Prior elicitation. Exposure to air pollution by @gabry_visualization_2019  ](figures/gabrypriorpc.png){width=80% fig-align="left"}
+
+:::
+
+:::{.column width=30%}
+
+ - Check for conflicts between prior predictive distribution and domain knowledge.
+
+:::
+::::
+
+## References
+
