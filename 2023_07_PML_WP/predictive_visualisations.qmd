@@ -209,6 +209,8 @@ rooto_promo <- ggplot(rooto_data$y_rep, aes(color = as.factor(model), x = count,
 
 ## Visual Predictive Checks {.unlisted}
 
+::::: {.fragment}
+
 ::::{.columns}
 
 :::{.column width=60%}
@@ -230,16 +232,19 @@ Very common, but fewer tools for effective visual checks in use.
 Uses tools from A - C.
 :::
 ::::
+:::::
 
 ## In Bayesian Workflows
 
+:::::{.fragment}
+
 ::::{.columns}
 
-:::{.column width=70%}
-![](figures/wfdiagram2.png){width=80%}
+:::{.column width=60%}
+![](figures/wfdiagram2.png){width=100%}
 :::
 
-:::{.column width=30% }
+:::{.column width=40% }
 
  - Predictive checks present on many stages of Bayesian Workflows
  
@@ -250,45 +255,58 @@ Uses tools from A - C.
     $\Rightarrow$ less mistakes
 :::
 ::::
+:::::
 
 ## Our work
 
 We provide structured recommendations on which visual checks to use.
 
-:::: {.columns}
+::::: {.columns}
 
-::: {.column width=30%}
+:::: {.column width=30%}
 
+::: {.fragment fragment-index=1}
 1. Continuous data
     - Continuous and smooth
     - Bounded
     - Point masses
-  
+
+:::
+:::{.fragment fragment-index=2}
 2. Counts
     - Large domain
     - Small domain
-  
+
+:::
+:::{.fragment fragment-index=3}  
 3. Discrete with small domain
     - Bernoulli trial
     - Categorical
     - Ordinal
 
 :::
+::::
+:::::
 
-::: {.column width=33%}
+:::: {.column width=33%}
 
-
+::: {.fragment fragment-index=1}
 ![](figures/appdens.png){height=20%}
 
-![](figures/rooto_promo.png){height=20%}
-
-
-
 :::
+:::{.fragment fragment-index=2}
+![](figures/rooto_promo.png){height=20%}
+:::
+::::
 
-:::{.column width=33%}
+::::{.column width=33%}
+
+:::{.fragment fragment-index=1}
 
 ![](figures/appdiff.png){height=20%}
+
+:::
+:::{.fragment fragment-index=2}
 
 ![](figures/3_1_ecdf_plots-2.png){height=20%}
 :::
@@ -297,13 +315,14 @@ We provide structured recommendations on which visual checks to use.
 
 :::::
 
-## Continuous data 
-#### Density plots and quantile dot plots
+## Continuous data
+####  Density plots and quantile dot plots
 
 Density plots show a KDE fit to the data.
 
-::::{.columns}
-:::{.column width=40%}
+:::::{.columns}
+::::{.column width=40%}
+:::{.incremental}
  - When observation is not smooth, KDE can have large local error.
  - Automated goodness-of-fit test to detect issues.
     - We use our earlier graphical test (@sailynoja_graphical_2022).
@@ -311,7 +330,9 @@ Density plots show a KDE fit to the data.
    - Introduced by @kay_when_2016.
 
 :::
-:::{.column width=60%}
+::::
+::::{.column width=60%}
+
 
 ```{r}
 #| fig-height: 4
@@ -323,12 +344,9 @@ Density plots show a KDE fit to the data.
 #| fig-height: 4
 p3
 ```
-    
-  <!-- ![](figures/cont_dens.png){width=100%} -->
-  <!-- ![](figures/cont_ecdf.png){width=100%} -->
-  <!-- ![](figucont_qdots.png.png){width=100%} -->
-:::
+
 ::::
+:::::
 
 ## Counts
 #### Density plots and rootograms
@@ -415,9 +433,11 @@ p_rooto <- rooto_discrete(x_2,
 
 
 
-::::{.columns}
+:::::{.columns}
 
-:::{.column width=40%}
+::::{.column width=40%}
+
+:::{.incremental}
 
 - When the range of observed values is large, continuous density plots work well.
 - As range narrows, density plots mislead.
@@ -426,7 +446,8 @@ p_rooto <- rooto_discrete(x_2,
 - Again, goodness-of-fit testing can tell, when density plot fails.
 
 :::
-:::{.column width=60%}
+::::
+::::{.column width=60%}
 ```{r}
 (pd1 + legend_none() + pd1_d) / (pd2 + legend_none() + pd2_d)
 ```
@@ -437,15 +458,17 @@ p_rooto + legend_move()
 ```
 
 
-:::
 ::::
+:::::
 
 ## Small discrete domains
 #### Reliability diagrams
 
-::::{.columns}
+:::::{.columns}
 
-:::{.column width=60%}
+::::{.column width=60%}
+
+:::{.incremental}
 
 Currently, bar plots are most commonly used.
 
@@ -456,6 +479,7 @@ model predictions and using a pool-adjacent-violators algorithm.
     - Algorithm proposed by @dimitriadis_stable_2021.
 
 :::
+::::
 :::{.column width=40%}
 
 ```{r}
@@ -514,8 +538,8 @@ plot_dotted_reliabilitydiag(
 
 ## Conclusion
 
-### Visual predictive checks
-
+### Visual predictive checks {.fragment}
+:::{.incremental}
  - Important part of Bayesian Workflows.
  - Structured recommendations reduce mistakes.
  - Density plots
@@ -523,12 +547,16 @@ plot_dotted_reliabilitydiag(
  - Discrete data
     - Reliability diagrams offer a good default.
 
-### Current stage
-
- - Finalizing a submission to Journal of Visualization and Interaction (JoVI)
+:::
+### Current stage {.fragment}
+:::{.incremental}
+ - Targeting submission to Journal of Visualization and Interaction (JoVI)
    - open access and open review.
    - Experimental track offers a chance to include interactivity.
 
+:::
+
+---
 
 ## Visual Predictive Checks {visibility="uncounted" .unlisted .unnumbered .small}
 
