@@ -1,0 +1,880 @@
+---
+title: "WP: Visual Predictive Checks in Bayesian Workflows"
+subtitle: "Part 2"
+author: "Teemu Säilynoja"
+date: "2024-03-12"
+format:
+  revealjs:
+    theme: simple
+    bibliography: "bibliography.bib"
+    self-contained: true
+    progress: true
+    title-slide-style: pandoc
+    smaller: true
+    # toc: true
+    # toc-depth: 2
+    # toc-title: "Outline"
+    # number-sections: true
+    number-depth: 2
+    code-fold: true
+    reference-location: section
+execute:
+  echo: false
+  warning: false
+  error: false
+  cache: false
+---
+
+```{r}
+library(ggplot2)
+library(ggdist)
+library(bayesplot)
+library(khroma)
+library(latex2exp)
+library(sfsmisc)
+library(patchwork)
+library(bayesflow)
+library(cmdstanr)
+library(dplyr)
+
+source("helpers.R")
+source("kde_helpers.R")
+check_cmdstan_toolchain(fix = TRUE, quiet = TRUE)
+
+register_knitr_engine(override = FALSE)
+
+options("ggdist.experimental.slab_data_in_intervals" = TRUE)
+
+SEED <- 37645624
+
+set.seed(SEED)
+
+theme_set(good_theme)
+
+N <- 100
+K <- 100
+DIFF <- FALSE
+```
+
+
+```{r}
+ecdf_limits <- ecdf_confidence_intervals(gamma = adjust_gamma_optimize(N, K, .95),
+                                         N = N,
+                                         K = K)
+
+x0 <- 0:K / K
+
+p0 <- ggplot(mapping = aes(x = x0)) +
+  geom_step(aes(y = ecdf_limits$lower / N - DIFF * x0)) +
+  geom_step(aes(y = ecdf_limits$upper / N - DIFF * x0)) +
+  labs(
+    x = TeX("PIT"),
+    y = if (DIFF)
+      "ECDF Difference"
+    else
+      "ECDF",
+    colour = ""
+  )
+
+x1 <- rnorm(N, 1)
+
+x1[x1 < 0] <- abs(rnorm(sum(x1<0), sd = .1))
+
+p1 <- ggplot(mapping = aes(x = x1)) +
+  stat_density(
+    aes(colour = "Unbounded"),
+    bw = "sj",
+    geom = "line",
+    size = 1,
+    show.legend = F
+  ) +
+  stat_density(
+    aes(x = x1, colour = "Known bounds"),
+    bw = "sj",
+    geom = "line",
+    bounds = c(0, Inf),
+    size = 1,
+    show.legend = F
+  ) +
+  stat_slab(
+    aes(colour = "Bound detection"),
+    fill = NA,
+    normalize = "none",
+    scale = 1,
+    show.legend = F
+  ) +
+  geom_rug() +
+  labs(x = TeX("$x$"),
+       y = "KDE",
+       colour = "KDE Method: ") +
+  scale_colour_manual(
+    values = c("#009CFF", "#FF5C00", "#57A773"),
+    limits = c( "Unbounded", "Bound detection","Known bounds"),
+    breaks = c("Unbounded", "Bound detection", "Known bounds")
+  ) +
+  scale_fill_manual(
+    values = c("#009CFF", "#FF5C00", "#57A773"),
+    limits = c( "Unbounded", "Bound detection","Known bounds"),
+    breaks = c("Unbounded", "Bound detection", "Known bounds")
+  ) +
+  theme(legend.position = "bottom") +
+  scale_y_continuous(expand = c(0, NA))
+
+
+p2 <-
+  p0 + geom_step(aes(
+    y = ecdf(pit_from_densityplot(p1, 1, x1))(x0) - DIFF * x0,
+    colour = "Unbounded"
+  ),
+  size = 1) +
+  geom_step(aes(
+    y = ecdf(pit_from_densityplot(p1, 2, x1))(x0) - DIFF * x0,
+    colour = "Known bounds"
+  ),
+  size = 1) +
+  geom_step(aes(
+    y = ecdf(pit_from_densityplot(p1, 3, x1, ggdist_layer = T))(x0) - DIFF * x0,
+    colour = "Bound detection"
+  ),
+  size = 1) +
+  scale_colour_manual(
+    values = c("#009CFF", "#FF5C00", "#57A773"),
+    limits = c( "Unbounded", "Bound detection","Known bounds"),
+    breaks = c("Unbounded", "Bound detection", "Known bounds")
+  ) + theme(legend.position = "bottom")
+
+```
+
+
+
+---
+
+### Visual Predictive Checks {.unlisted}
+
+
+:::::{.columns}
+
+::::{.column width=60%}
+
+![ @gelman_bayesian_2020 ](figures/ppcs.png){width=100%}
+::::
+
+::::{.column width=40%}
+
+::: {.fragment}
+**A: Continuous data**\
+Most commonly KDE based density plots.
+ 
+**C: Discrete data**\
+Fewer commonly used tools for effective visual checks.
+
+**B: Summary statistic**\
+Another common visual PPC. Already more task specific.
+
+**D: Data split into groups**\
+Use tools from A - C to assess predictions for subgroups of data.
+:::
+
+::::
+
+:::::
+
+---
+
+### In Bayesian Workflows
+
+:::::{.fragment}
+
+::::{.columns}
+
+:::{.column width=60%}
+![](figures/wfdiagram2.png){width=100%}
+:::
+
+:::{.column width=40% }
+
+ - Predictive checks present on many stages of Bayesian Workflows
+ 
+ - Early stages of model building can be very exploratory
+    
+ - Clear guidelines reduce ad-hoc decisions during the exploration and assessment
+    
+    $\Rightarrow$ fewer mistakes
+:::
+::::
+:::::
+
+---
+
+### Our work
+
+**Aim:** Provide structured recommendations on which visual predictive checks to use.
+
+:::::: {.columns}
+
+::::: {.column width=33%}
+
+:::: {.fragment fragment-index=1}
+
+1. Continuous data
+    - Focus of my previous WP
+    - Bounds and point-masses are common challenges
+        - **Solution: Goodness-of-fit testing**
+
+::::
+
+:::::
+
+::::: {.column width=63%}
+
+:::: {.fragment fragment-index=1}
+
+:::{layout-ncol=2}
+
+![](figures/appdens.png){height=25%}
+
+![](figures/appdiff.png){height=25%}
+
+:::
+
+```{r}
+#| fig-height: 4
+(p1 + p2) + plot_layout(guides = "collect") & theme(legend.position = "top")
+```
+
+::::
+
+:::::
+
+::::::
+
+---
+
+### Our work
+
+**Aim:** Provide structured recommendations on which visual predictive checks to use.
+
+::::: {.columns}
+
+:::: {.column width=45%}
+
+2. Count models
+    - When are KDE plots good enough?
+    - What to use when KDE fails to represent the data?
+
+::: {.fragment fragment-index=3}  
+3. Binomial predictions
+    - Non-parametric calibration assessment
+:::
+
+::: {.fragment fragment-index=4}
+4. Categorical and ordinal predictions
+    - Extend tools for binomial data
+        1. one-vs-others probability
+        2. cumulative probability
+
+:::
+::::
+
+:::: {.column width=55%}
+
+![](figures/rooto_promo.png){width=75%}
+
+
+![](figures/pava-calibration.png){width=80%}
+
+::::
+
+:::::
+
+---
+
+### Roaches - PPC
+
+```{r}
+#| label: "package_imports"
+library("rstanarm")
+library("loo")
+library("caret")
+```
+
+```{r}
+#| label: "data_import"
+data(roaches)
+# Roach1 is very skewed and we take a square root
+roaches$sqrt_roach1 <- sqrt(roaches$roach1)
+n <- length(roaches$y)
+```
+
+::::: {.columns}
+
+:::: {.column width=45%}
+
+```{r}
+#| label: "model_fit"
+#| code-line-numbers: "4,5"
+#| code-fold: false
+library("rstanarm")
+
+stan_glmnb <- stan_glm(
+  y ~ sqrt_roach1 + treatment + senior,
+  family = neg_binomial_2,
+  offset = log(exposure2),
+  prior = normal(0, 2.5),
+  prior_intercept = normal(0, 5),
+  data = roaches,
+  chains = 4,
+  cores = 1,
+  seed = SEED,
+  refresh = 0
+)
+```
+
+```{r}
+#| label: "model_fit_vis"
+#| echo: true
+#| code-line-numbers: "4,5,12"
+#| code-fold: false
+#| eval: false
+library("rstanarm")
+
+stan_glmnb <- stan_glm(
+  y ~ sqrt_roach1 + treatment + senior,
+  family = neg_binomial_2,
+  offset = log(exposure2),
+  prior = normal(0, 2.5),
+  prior_intercept = normal(0, 5),
+  data = roaches
+)
+
+pp_check(stan_glmnb)
+```
+
+:::{.incremental}
+- Default bandwidth is large.
+    - E.g. a lot of mass between 0 and 1.
+- Considerable point mass at zero, also visible in the PIT ECDF.
+:::
+
+::::
+
+:::: {.column width=50%}
+
+```{r}
+#| label: "posterior_predictions"
+post_pred <- posterior_predict(stan_glmnb, draws = 1000)
+post_prob_smpl <- pnbinom(0, as_draws(stan_glmnb)$reciprocal_dispersion[1:1000], mu = posterior_epred(stan_glmnb, draws = 1000), lower.tail = F)
+post_prob_1 <- colMeans(post_prob_smpl)
+```
+
+```{r}
+#| label: ppcheck
+#| fig-height: 4
+
+ppc1 <- pp_check(stan_glmnb) +
+  scale_x_sqrt(
+    limits = c(0, 1.5 * max(roaches$y)),
+    oob = scales::oob_keep,
+    breaks = c(0, 1, 10, 100, 200, 300, 400, 500)
+  ) +
+  yaxis_ticks(TRUE) +
+  yaxis_text(TRUE)
+
+ppc1
+```
+
+```{r}
+#| label: "03_01_unbounded_kde_pit_ecdf"
+#| message: false
+ppc_pit_ecdf(pit = pit_from_densityplot(ppc1, 2, x = sqrt(roaches$y), ggdist_layer = F))
+```
+::::
+
+:::::
+
+---
+
+### Roaches - PPC
+
+::::: {.columns}
+
+:::: {.column width=45%}
+
+```{r}
+#| label: "model_fit_vis2"
+#| echo: true
+#| code-line-numbers: "4,5,12,13,14"
+#| code-fold: false
+#| eval: false
+library("rstanarm")
+
+stan_glmnb <- stan_glm(
+  y ~ sqrt_roach1 + treatment + senior,
+  family = neg_binomial_2,
+  offset = log(exposure2),
+  prior = normal(0, 2.5),
+  prior_intercept = normal(0, 5),
+  data = roaches
+)
+
+pp_check(stan_glmnb,
+         bw = "sj",
+         trim = T)
+```
+
+:::{.incremental}
+- Sheather-Jones bandwidth selection algorithm often yields a more representative fit.
+- Still considerable point mass at zero.
+:::
+
+::::
+
+:::: {.column width=50%}
+```{r}
+#| label: ppcheck_sj
+#| fig-height: 4
+
+ppc2 <- pp_check(stan_glmnb,
+                 bw = "sj",
+                 trim = T) +
+  scale_x_sqrt(
+    limits = c(0, 1.5 * max(roaches$y)),
+    oob = scales::oob_keep,
+    breaks = c(0, 1, 10, 100, 200, 300, 400, 500)
+  ) +
+  yaxis_ticks(TRUE) +
+  yaxis_text(TRUE)
+
+ppc2
+```
+
+```{r}
+#| label: 03_01_sj_kde_pit_ecdf
+#| message: false
+#| fig-height: 4
+ppc_pit_ecdf(pit = pit_from_densityplot(ppc2, 2, x = sqrt(roaches$y), ggdist_layer = F))
+```
+::::
+
+:::::
+
+---
+
+### Roaches - PPC
+#### Rootogram
+
+::::: {.columns}
+:::: {.column width=45%}
+::: {.incremental}
+- Emphasize discreteness of the predictive distribution
+- Our solution (bottom) returns the visualisation to a interval plot
+
+    - More familiar to users
+    - Posterior is also shown as discrete
+    - Visually less busy without losing information
+    
+:::
+
+::::
+
+::: {.column width=55%}
+
+```{r}
+#| label: roaches_rootogram
+#| fig-height: 5
+#| message: false
+
+ppc_rootogram(roaches$y,
+              post_pred[1:200,]) +
+  scale_x_continuous(
+    limits = c(0, 150),
+    breaks = c(0, 10, 100, 150),
+    oob = scales::oob_keep
+  ) +
+  xlab("") +
+  theme(legend.position = "bottom")
+
+rooto_discrete(roaches$y,
+               post_pred,
+               max_count = 150,
+               sum_over_max = T) +
+  # scale_x_sqrt(breaks = c(0, 10, 100, 150), labels = \(breaks) {
+  #   breaks[length(breaks)] <-
+  #     paste(breaks[length(breaks)], "+", sep = "")
+  #   breaks
+  # }) +
+  theme(legend.position = "bottom")
+```
+
+:::
+
+:::::
+---
+
+### Roaches
+#### Summary statistics
+
+
+::::: {.columns}
+:::: {.column width=50%}
+:::{.incremental}
+- Task specific checks of quantities of interest.
+    - For example, we can inspect the tail we cut out of the previous PPCs.
+    - The tails of the posterior predictive distribution are expected to be 
+    thicker than the tail of the observations.
+
+:::
+
+::::
+
+::: {.column width=50%}
+
+```{r}
+#| label: ppc_stat
+#| fig-height: 2
+#| fig-width: 4
+#| message: false
+pareto_k <- function(x) {gpdfit(tail(sort(x), 100), sort_x = F)$k}
+#zeros_ratio <- function(x) {sum(x==0) / length(x)}
+
+ppc_stat(y = roaches$y, post_pred, stat = "max", bins = 30) +
+  scale_x_log10()
+
+ppc_stat(y = roaches$y, post_pred, stat = "pareto_k", bins = 30)
+#ppc_stat(y = roaches$y, post_pred, stat = "zeros_ratio", bins = 30)
+```
+
+:::
+
+::::
+
+---
+
+### Roaches - Zero inflation
+
+:::{.fragment fragment-index=1}
+
+#### Binned calibration plots
+
+:::
+
+:::{.fragment fragment-index=2}
+
+- @dimitriadis_stable_2021 show how the choice of binning can cause vastly different conclusions.
+
+:::
+
+:::{.fragment fragment-index=1}
+
+```{r}
+binned_cal_plot <- caret::calibration(
+  y ~ pmean,
+  data = data.frame(y = as.factor(pmin(roaches$y, 1)),
+                    pmean = post_prob_1),
+  cuts = 23,
+  class = "1"
+) |>
+  ggplot()
+
+binned_cal_plot$layers <- c(
+  binned_cal_plot$layers[1],
+  geom_errorbar(aes(ymin = Lower, ymax = Upper),
+                colour = color_scheme_get()$light_highlight,
+                linewidth = 1),
+  geom_point(colour = color_scheme_get()$mid_highlight,
+             size = 2)
+)
+
+binned_cal_plot + xlab("Predicted event probability (%)")
+```
+
+:::
+
+---
+
+### Roaches - Zero inflation
+#### PAV adjusted calibration plots
+
+Use pool-adjacent-violators (PAV) algorithm to replace binning in calibration plots
+with conditional event probabilities (CEP)  (@dimitriadis_stable_2021).
+
+:::{.incremental}
+
+- Estimate consistency bands from posterior samples.
+
+:::
+
+
+```{r}
+#| label: binomial_reliability_diagram
+#| fig-height: 4
+#| message: false
+#| 
+rd <- reliabilitydiag(post_prob_1, y = pmin(roaches$y, 1), region.level = .9)
+
+p_rd <- autoplot(
+  rd,
+  params_histogram = NA,
+  params_ribbon = NA
+)
+
+p_rd$layers <- c(
+  p_rd$layers[1],
+  stat_dots(
+    aes(x = sort(post_prob_1)),
+    # quantiles = 100,
+    height = .3,
+    scale = 1,
+    fill = color_scheme_get()$mid,
+    colour = color_scheme_get()$mid_highlight
+  ),
+  geom_ribbon(aes(
+    x = sort(post_prob_1),
+    ymin = (
+      sapply(1:nrow(post_prob_smpl),
+             \(r) {
+               ord <- order(post_prob_smpl[r, ])
+               Iso::pava(pmin(post_pred[r, ord], 1))[order(ord)]
+             }) |>
+        apply(
+          MARGIN = 1,
+          FUN = quantile,
+          .05,
+          names = F
+        )
+    )[order(post_prob_1)],
+    ymax = (
+      sapply(1:nrow(post_prob_smpl),
+             \(r) {
+               ord <- order(post_prob_smpl[r,])
+               Iso::pava(pmin(post_pred[r, ord], 1))[order(ord)]
+             }) |>
+        apply(
+          MARGIN = 1,
+          FUN = quantile,
+          .95,
+          names = F
+        )
+    )[order(post_prob_1)]
+  ), fill = color_scheme_get()$light_highlight,
+  alpha = .5),
+  p_rd$layers[2:3]
+)
+```
+
+:::{layout-ncol=2}
+
+```{r}
+#| fig-height: 8
+#| message: false
+binned_cal_plot + xlab("Predicted event probability (%)") + coord_equal()
+```
+
+```{r}
+#| fig-height: 8
+#| message: false
+p_rd
+```
+
+:::
+
+---
+
+### Roaches - Zero inflation
+#### Residual plots
+
+::::: {.columns}
+:::: {.column width=45%}
+
+:::{.fragment fragment-index=1}
+- Discrete outcomes make direct inspection of residuals difficult.
+:::
+
+::::
+
+:::: {.column width=55%}
+
+:::{.fragment fragment-index=2}
+
+```{r}
+#| label: raw_residual_plot
+#| fig-height: 4
+#| message: false
+#| 
+
+residual_plot <- roaches |>
+  cbind(data.frame(prob = post_prob_1)) |>
+  ggplot() +
+  aes(x = roach1,
+      y = pmin(y, 1) - prob) +
+  geom_point(color = color_scheme_get()$mid_highlight) +
+  scale_x_sqrt() +
+  labs(y = "Residual", x = "Baseline roach count")
+
+residual_plot
+```
+
+:::
+
+::::
+
+:::::
+
+---
+
+### Roaches - Zero inflation
+#### Residual plots
+
+::::: {.columns}
+:::: {.column width=45%}
+
+- Discrete outcomes make direct inspection of residuals difficult.
+
+- Binned residual plots are a common solution
+    - Suffer from binning artefacts
+
+:::{.fragment fragment-index=2}
+
+- PAV adjusted CEPs offer a binning free approach.
+    - Point-wise consistency intervals for model calibration obtained are from posterior samples.
+
+:::
+
+::::
+
+
+:::: {.column width=55%}
+
+
+```{r}
+#| label: binned_residual_plot
+#| fig-height: 4
+
+data_binned_residual <- roaches |>
+  cbind(data.frame(prob = post_prob_1)) |>
+  group_by(cut(roach1, 
+               seq(sqrt(min(roach1)), sqrt(max(roach1)), length.out = 23) ** 2,
+               #unique(sort(roach1)[floor(seq(1, nrow(roaches), length.out = 20))]),
+               include.lowest = T)) |>
+  summarise(
+    r = mean(pmin(y,1) - prob),
+    x = mean(roach1),
+    hh = quantile(replicate(2000, mean(rbinom(n = n(), size = 1, prob = prob) - prob)), .95),
+    ll = quantile(replicate(2000, mean(rbinom(n = n(), size = 1, prob = prob) - prob)), .05),
+    h = quantile(replicate(2000, mean(rbinom(n = n(), size = 1, prob = prob) - prob)), .75),
+    l = quantile(replicate(2000, mean(rbinom(n = n(), size = 1, prob = prob) - prob)), .25)
+  )
+binned_residual_plot <-  data_binned_residual |> 
+    ggplot(aes(x = x, y = r, ymin = ll, ymax = hh)) +
+  geom_linerange(colour = color_scheme_get()$light_highlight,
+                 linewidth = 2,
+                 alpha = .5) +
+  geom_linerange(aes(ymin = l, ymax = h),
+                 colour = color_scheme_get()$light_highlight,
+                 linewidth = 2,
+                 alpha = .7) +
+  geom_point(aes(colour = I(ifelse((r >= ll) & (r <= hh),
+           color_scheme_get()$mid_highlight,
+           "red"
+    )))) +
+  scale_x_sqrt(breaks = c(0,1,10,100,200,300,400,500)) +
+  labs(y = "Residual", x = "Baseline roach count") +
+  theme(legend.position = "none")
+
+binned_residual_plot
+```
+
+
+:::{.fragment fragment-index=2}
+
+```{r}
+#| label: pava_residual_plot
+#| fig-height: 4
+
+data_pav_res <- data.frame(
+  res = Iso::pava(pmin(roaches$y,1)[order(post_prob_1)]) - sort(post_prob_1),
+  x = roaches$roach1[order(post_prob_1)],
+  senior = roaches$senior[order(post_prob_1)],
+  treatment = roaches$treatment[order(post_prob_1)]
+)
+data_pav_res[, c("ymin", "ymax")] <- (sapply(
+  1:nrow(post_prob_smpl),
+  \(r) {
+    ord <- order(post_prob_smpl[r, ])
+    Iso::pava(pmin(post_pred[r,ord],1))[order(ord)]
+}) |>
+  apply(MARGIN = 1, FUN = quantile, c(.05, 0.95), names = F) |>
+  t() - post_prob_1)[order(post_prob_1), ]
+
+pav_residual_plot <-  data_pav_res |> 
+  arrange(x) |> 
+    ggplot(aes(x = x, y = res, ymin = ymin, ymax = ymax)) +
+  geom_linerange(alpha = .5, colour = color_scheme_get()$light_highlight, linewidth = 2) +
+  geom_point(aes(color = I(
+    ifelse((res <= ymax) &
+             (res >= ymin),
+           color_scheme_get()$mid_highlight,
+           "red"
+    )
+  )),
+  alpha = .5,
+  stroke = 0,
+  size = 3) +
+  scale_x_sqrt(breaks = c(0,1,10,100,200,300,400,500)) +
+  #facet_wrap(vars(senior, treatment), labeller = "label_both") +
+  theme(legend.position = "none") +
+  labs(y = "PAVA Residual", x = "Baseline roach count")
+
+pav_residual_plot
+```
+
+:::
+
+::::
+
+:::::
+
+---
+
+### Conclusions
+
+ - KDE density plots are effective summaries
+    - Remember to assess goodness-of-fit to data.
+ - Binomial predictions
+    - PAV adjusted calibration plots offer a good default.
+    - PAVA allows for non-parametric residual plots
+ - Categorical predictions
+   - One-vs-others $\rightarrow$ binomial calibration
+ - Ordinal predictions
+   - Cumulative probability of N-or-less $\rightarrow$ binomial calibration
+   
+#### Current stage
+ - Targeting submission to Journal of Visualization and Interaction (JoVI)
+   - open access and open review.
+   - Experimental track offers a chance to include interactivity.
+
+---
+
+## Visual Predictive Checks {visibility="uncounted" .unlisted .unnumbered .small}
+
+### Prior predictive checks
+
+::::{.columns}
+
+:::{.column width=70%}
+
+![Effect of hyperparameters in predictions of a GP by @gelman2013bayesian ](figures/gelmanpriorpc.png){width=80% fig-align="left"}
+
+![Prior elicitation. Exposure to air pollution by @gabry_visualization_2019  ](figures/gabrypriorpc.png){width=80% fig-align="left"}
+
+:::
+
+:::{.column width=30%}
+
+ - Check for conflicts between prior predictive distribution and domain knowledge.
+
+:::
+::::
+
+## References
+
