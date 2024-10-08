@@ -1,0 +1,608 @@
+---
+title: "Posterior SBC"
+subtitle: '"Data conditioned simulation-based calibration checking for posterior approximations of probabilistic models"'
+author: "$\\textbf{Teemu Säilynoja}$, Marvin Schmitt, Aki Vehtari, Paul Bürkner"
+date: 2024-10-08
+affiliation: Probabilistic machine learning group, Aalto University
+bibliography: references.bib
+format:
+  revealjs:
+    slide-number: true
+    footer: "github.com/TeemuSailynoja/talks -- teemu.sailynoja@aalto.fi"
+    logo: assets/qr_code.svg
+    css: logo.css
+    reference-location: section
+    smaller: true
+
+title-slide-attributes:
+  data-background-image: /assets/logo_aalto_big.png
+  data-background-size: 10%
+  data-background-opacity: "0.5"
+  data-background-position: 5% 100%
+  data-footer: ""
+
+include-after-body: add-custom-footer.html
+---
+
+```{r}
+library(ggplot2)
+library(khroma)
+library(dplyr)
+library(scales)
+library(bayesplot)
+library(gganimate)
+library(transformr)
+theme_set(theme_default(base_size = 20, base_family = "Sans"))
+bayesplot_theme_set(theme_default(base_size = 20, base_family = "Sans"))
+
+SEED <- 9678
+set.seed(SEED)
+
+source("prior predictive.R")
+
+pp_set <- prior_predictive_generator_years(21)
+# library(cmdstanr)
+# model <- cmdstan_model("lotka_volterra.stan")
+# fit <- model$sample(pp_set$generated, seed = SEED, refresh = 0, iter_sampling = 500)
+# fit$save_object("prior_pred_fit.RDS")
+fit <- readRDS("prior_pred_fit.RDS")
+# fit_obs <- model$sample(data = list(y_init = lynx_hare_df[1,2:3] |>  unlist(), y = tail(lynx_hare_df[, 2:3], -1), ts = 2:21, N = 20), seed = SEED, iter_sampling = 100, init = model$pathfinder(
+#       data = list(y_init = lynx_hare_df[1,2:3] |>  unlist(), y = tail(lynx_hare_df[, 2:3], -1), ts = 2:21, N = 20),
+#       num_paths = 10,
+#       single_path_draws = 40,
+#       draws = 400,
+#       history_size = 9,
+#       max_lbfgs_iters = 100,
+#       refresh = 0,
+#       seed = SEED
+#     ))
+fit_obs <- readRDS("fit_obs.RDS")
+
+```
+
+
+:::{.columns}
+
+:::{.column width=40% }
+
+#### Data conditioned
+
+  [- We might be extremely interested in some **specific** data.]{.fragment fragment-id=4}
+  
+#### simulation-based
+
+  [- I'll return to this.]{.fragment fragment-index=4}
+  
+#### calibration checking
+
+  [- Is the model e.g. biased?]{.fragment fragment-index=3}
+  
+  
+#### for posterior approximations
+
+  [- can't solve the math]{.fragment fragment-index=2}
+
+#### of probabilistic models
+
+ [- uncertainty quantification]{.fragment fragment-index=1}
+
+
+
+
+
+:::
+
+:::{.column width=50%}
+
+![](assets/tampa.png)
+:::
+
+:::
+
+
+
+<!-- ### Data conditioned simulation-based calibration checking for posterior approximations of [probabilistic models]{style="color:orange;font-weight:bold;"} -->
+
+<!-- -   Probability $\approx$ uncertainty from randomness, or lack of knowledge. -->
+
+<!-- ------------------------------------------------------------------------ -->
+
+<!-- ### Data conditioned simulation-based calibration checking for [posterior approximations]{style="color:orange;font-weight:bold;"} of probabilistic models -->
+
+<!-- -   Probability $\approx$ uncertainty from randomness, or lack of knowledge. -->
+<!-- -   Can't do the math $\rightarrow$ approximate with algorithms. -->
+
+<!-- ------------------------------------------------------------------------ -->
+
+<!-- ### Data conditioned simulation-based [calibration checking]{style="color:orange;font-weight:bold;"} for posterior approximations of probabilistic models -->
+
+<!-- -   Probability $\approx$ uncertainty from randomness, or lack of knowledge. -->
+<!-- -   We can't do the math $\rightarrow$ approximate with computer algorithms. -->
+<!-- -   Validate the algorithm for **our** model implementation. -->
+
+<!-- ------------------------------------------------------------------------ -->
+
+<!-- ### Data conditioned simulation-based [calibration checking]{style="color:orange;font-weight:bold;"} for posterior approximations of probabilistic models -->
+
+<!-- -   Probability $\approx$ uncertainty from randomness, or lack of knowledge. -->
+<!-- -   We can't do the math $\rightarrow$ approximate with computer algorithms. -->
+<!-- -   Validate the algorithm for **our** model implementation. -->
+
+<!-- ::: {.callout-caution title="***IMPORTANT!***"} -->
+<!-- ::: -->
+
+<!-- ------------------------------------------------------------------------ -->
+
+<!-- ### Data conditioned [simulation-based]{style="color:orange;font-weight:bold;"} calibration checking for posterior approximations of probabilistic models -->
+
+<!-- -   Probability $\approx$ uncertainty from randomness, or lack of knowledge. -->
+<!-- -   We can't do the math $\rightarrow$ approximate with computer algorithms. -->
+<!-- -   Validate the algorithm for **our** model implementation. -->
+<!-- -   Validation uses repeated simulations from priors: SBC -->
+
+<!-- ------------------------------------------------------------------------ -->
+
+<!-- ### [Data conditioned]{style="color:orange;font-weight:bold;"} simulation-based calibration checking for posterior approximations of probabilistic models -->
+
+<!-- -   Probability $\approx$ uncertainty from randomness, or lack of knowledge. -->
+<!-- -   We can't do the math $\rightarrow$ approximate with computer algorithms. -->
+<!-- -   Validate the algorithm for **our** model implementation. -->
+<!-- -   Validation uses repeated simulations from priors: SBC -->
+<!-- -   The results hold for a particular data set. -->
+
+------------------------------------------------------------------------
+
+### Case study: predator-prey model {.smaller}
+
+::: columns
+::: {.column width="50%"}
+![](assets/canada_lynx.jpg){.fragment .fade-out .absolute .nostretch align="left" height="300px" fragment-index="1"}
+
+::: {.fragment .absolute fragment-index="1"}
+$$
+\begin{cases}
+\Delta \color{teal} H = \left(\alpha - \beta \color{orange} L\right) \color{teal} H\\\
+\Delta \color{orange} L = \left(-\gamma + \delta \color{teal} H\right) \color{orange} L
+\end{cases}
+$$
+:::
+
+::: {.fragment .absolute top="220" fragment-index="2"}
+$$
+y_{t,s} \sim \log\mathcal N (\log(z_{t,s}), \sigma_s)
+$$
+:::
+:::
+
+::: {.column width="50%"}
+![](assets/snow_shoe.jpg){.fragment .absolute .fade-out .nostretch align="right" height="300px" fragment-index="3"}
+
+::: {.fragment .absolute fragment-index="3"}
+$$
+\begin{align}
+\alpha, \gamma &\sim \mathcal N^+(1, 0.5),\\
+\beta, \delta &\sim \mathcal N^+(0.05, 0.05,\\
+\sigma &\sim \log \mathcal N (-1,1),\\
+\color{teal}{z_{0,h}},\color{orange}{z_{0,l}} &\sim \log\mathcal N(\log(10),1)
+\end{align}
+$$ [@stan-lv]
+:::
+:::
+:::
+
+::: {.absolute bottom="-50"}
+```{r}
+#| fig-height: 3
+#| fig-align: center
+lynx_hare_df <-
+  read.csv("data/hudson-bay-lynx-hare.csv",
+           comment.char = "#")
+lynx_hare_df |>
+  ggplot(aes(x = Year)) +
+  geom_path(aes(y = Lynx,
+                colour = "Lynx")) +
+  geom_path(aes(y = Hare,
+                colour = "Hare")) +
+  theme(legend.position = "inside",
+        legend.position.inside = c(.9,.95)) +
+  labs(y = "Pelts", colour = "") + scale_colour_manual(values = c("#008080", "#FF7F00")) -> obs_plot
+
+obs_plot
+```
+:::
+
+------------------------------------------------------------------------
+
+### Prior predictive samples
+
+```{r}
+#| layout-nrow: 3
+n_prior_draws <- 8
+priprpsets <- pp_sets(n_prior_draws) |>
+  bind_rows() |> 
+  rbind(
+    read.csv("data/hudson-bay-lynx-hare.csv",
+           comment.char = "#") |> 
+      cbind(data.frame(gen_id = "Observed"))
+  )
+  ggplot(priprpsets) +
+  aes(x = Year) +
+  geom_path(aes(y = Hare, colour = "Hare")) +
+  geom_path(aes(y = Lynx, colour = "Lynx")) +
+  facet_wrap(vars(gen_id), scales = "free_y", nrow = 3) +
+  # theme(legend.position = "inside",
+  #       legend.position.inside = c(.95,.15)) +
+  scale_x_continuous(breaks = breaks_pretty(n = 3)) + 
+  scale_y_continuous(breaks = breaks_pretty(n = 3)) + 
+  labs(y = "Pelts", colour = "") + scale_colour_manual(values = c("#008080", "#FF7F00"))
+```
+
+------------------------------------------------------------------------
+
+### Prior predictive samples
+
+```{r}
+#| layout-nrow: 3
+
+  ggplot(priprpsets) +
+  aes(x = Year) +
+  geom_path(aes(y = Hare, colour = "Hare")) +
+  geom_path(aes(y = Lynx, colour = "Lynx")) +
+  geom_rect(data = subset(priprpsets, gen_id %in% c("Sim 01", "Sim 03", "Sim 04", "Sim 07")), 
+                          fill = NA, colour = "red", xmin = -Inf,xmax = Inf,
+            ymin = -Inf,ymax = Inf, linewidth = 2, linetype = "dashed") +
+  facet_wrap(vars(gen_id), scales = "free_y", nrow = 3) +
+  # theme(legend.position = "inside",
+  #       legend.position.inside = c(.95,.15)) +
+  scale_x_continuous(breaks = breaks_pretty(n = 3)) + 
+  scale_y_continuous(breaks = breaks_pretty(n = 3)) + 
+  labs(y = "Pelts", colour = "") + scale_colour_manual(values = c("#008080", "#FF7F00"))
+```
+
+------------------------------------------------------------------------
+
+### SBC {.smaller}
+
+Algorith by [@talts]:
+
+::: columns
+::: {.column width="60%"}
+1.  [Draw parameters from priors $\theta \sim \pi(\theta)$]{.fragment fragment-index="1"}
+2.  [Generate data $y \sim p(y|\theta)$.]{.fragment fragment-index="2"}
+3.  [Estimate posterior $p(\theta'|y)$]{.fragment fragment-index="3"}
+4.  [Compare $\theta$ and $\theta'$.]{.fragment fragment-index="4"}[^1]
+5.  [Repeat 1. - 4. $M$ times.]{.fragment fragment-index="6"}
+6.  [Assess calibration]{.fragment fragment-index="7"}
+    
+  [If inference is calibrated, ranks of $\theta_m$ and $\theta'_m$ should be uniformly distributed.]{.fragment fragment-index="8"}
+:::
+
+::: {.column width="40%"}
+::: {.fragment .absolute fragment-index="1"}
+```{r}
+ppc_intervals(
+  y = c(pp_set$variables$theta, pp_set$variables$sigma),
+  fit$draws(c("theta", "sigma"), format = "matrix")[1,],
+  x = 1:6,
+  size = 0,
+  linewidth = 0,
+  fatten = 0
+) + geom_point(mapping = aes(y = .data$y_obs, 
+        color = "y", fill = "y"), shape = 21, stroke = 0.5, size = 3) + scale_x_continuous(
+  breaks = 1:6,
+  labels = c(
+    "alpha",
+    "beta",
+    "gamma",
+    "delta",
+    "sigma_h",
+    "sigma_l"
+  )
+) + coord_flip() + labs(x = "") + theme_default(base_size = 32, base_family = "Sans") + theme(legend.position = "none")
+```
+:::
+
+::: {.fragment .absolute bottom="150" fragment-index="2"}
+```{r}
+ggplot(mapping = aes(x = lynx_hare_df$Year)) +
+  geom_path(aes(y = c(pp_set$generated$y_init[2], pp_set$generated$y[,2]),
+                colour = "Lynx")) +
+  geom_path(aes(y = c(pp_set$generated$y_init[1], pp_set$generated$y[,1]),
+                colour = "Hare")) +
+  theme(legend.position = "inside",
+        legend.position.inside = c(.8,.95)) +
+  labs(y = "Pelts", x = "", colour = "") + scale_colour_manual(values = c("#008080", "#FF7F00")) + theme_default(base_size = 32, base_family = "Sans") + theme(legend.position = "none") +
+  ylim(c(0,300))
+```
+:::
+
+::: {.fragment fragment-index="3"}
+```{r}
+ppc_intervals(
+  y = c(pp_set$variables$theta, pp_set$variables$sigma),
+  fit$draws(c("theta", "sigma"), format = "matrix"),
+  x = 1:6,
+  size = 3,
+  linewidth = 3,
+  fatten = 2
+) + geom_point(mapping = aes(y = .data$y_obs, 
+        color = "y", fill = "y"), shape = 21, stroke = 0.5, size = 3) + scale_x_continuous(
+  breaks = 1:6,
+  labels = c(
+    "alpha",
+    "beta",
+    "gamma",
+    "delta",
+    "sigma_h",
+    "sigma_l"
+  )
+) + coord_flip() + labs(x = "") + theme_default(base_size = 32, base_family = "Sans") + theme(legend.position = "none")
+```
+:::
+
+::: {.fragment .absolute bottom="150" fragment-index="4"}
+```{r}
+
+post_draws <- data.frame(
+  z_h = c(fit$draws("z_init[1]", format = "matrix")[1:50,], fit$draws(paste("z[", 1:20, ",1]", sep = ""), format = "matrix")[1:50,]),
+  sim_id = rep(1:50, 21),
+  year = rep(lynx_hare_df$Year, each = 50),
+z_l = c(fit$draws("z_init[2]", format = "matrix")[1:50,], fit$draws(paste("z[", 1:20, ",2]", sep = ""), format = "matrix")[1:50,]),
+s_h = fit$draws("sigma[1]", format = "matrix")[1:50,] |> unname(),
+s_l = fit$draws("sigma[2]", format = "matrix")[1:50,] |> unname()
+)
+
+ggplot(post_draws, mapping = aes(x = year)) +
+  # geom_ribbon(aes(ymax = qlnorm(.9, log(z_h), s_h), ymin = qlnorm(.1, log(z_h), s_h)), fill = "#008080", alpha = .2) +
+  # geom_ribbon(aes(ymax = qlnorm(.75, log(z_h), s_h), ymin = qlnorm(.25, log(z_h), s_h)), fill = "#008080", alpha = .2) +
+  # geom_ribbon(aes(ymax = qlnorm(.9, log(z_l), s_l), ymin = qlnorm(.1, log(z_l), s_l)), fill = "#FF7F00", alpha = .2) +
+  # geom_ribbon(aes(ymax = qlnorm(.75, log(z_l), s_l), ymin = qlnorm(.25, log(z_l), s_l)), fill = "#FF7F00", alpha = .2) +
+  # geom_path(aes(y = qlnorm(.5, log(z_h), s_h)), colour = "#008080", linetype = "dashed") +
+  # geom_path(aes(y = qlnorm(.5, log(z_l), s_l)), colour = "#FF7F00", linetype = "dashed") +
+  geom_path(aes(y = rlnorm(length(z_h), log(z_h), s_h), group = sim_id), alpha = .3, colour = "#008080", linetype = "dashed") +
+  geom_path(aes(y = rlnorm(length(z_l), log(z_l), s_l), group = sim_id), alpha = .3, colour = "#FF7F00", linetype = "dashed") +
+  geom_path(aes(y = y, x = x,
+                colour = "Lynx"), size = 1, data = data.frame(y = c(pp_set$generated$y_init[2], pp_set$generated$y[,2]), x = lynx_hare_df$Year) ) +
+  geom_path(aes(y = y, x=x,
+                colour = "Hare"), size = 1, data = data.frame(y = c(pp_set$generated$y_init[1], pp_set$generated$y[,1]), x = lynx_hare_df$Year)) +
+  theme(legend.position = "inside",
+        legend.position.inside = c(.8,.95)) +
+  labs(y = "Pelts", x = "", colour = "") + scale_colour_manual(values = c("#008080", "#FF7F00")) + theme_default(base_size = 32, base_family = "Sans") + theme(legend.position = "none") +
+  coord_cartesian(ylim = c(0,300))
+```
+
+<!-- ::: -->
+
+<!-- :::{.fragment .absolute bottom=150 fragment-index=5} -->
+
+<!-- ```{r} -->
+
+<!-- # ggplot(post_draws, mapping = aes(x = year)) + -->
+
+<!-- #   geom_ribbon(aes(ymax = qlnorm(.9, log(z_h), s_h), ymin = qlnorm(.1, log(z_h), s_h)), -->
+
+<!-- #               fill = "#008080", -->
+
+<!-- #               alpha = .2) + -->
+
+<!-- #   geom_ribbon(aes( -->
+
+<!-- #     ymax = qlnorm(.75, log(z_h), s_h), -->
+
+<!-- #     ymin = qlnorm(.25, log(z_h), s_h) -->
+
+<!-- #   ), -->
+
+<!-- #   fill = "#008080", -->
+
+<!-- #   alpha = .2) + -->
+
+<!-- #   geom_ribbon(aes(ymax = qlnorm(.9, log(z_l), s_l), ymin = qlnorm(.1, log(z_l), s_l)), -->
+
+<!-- #               fill = "#FF7F00", -->
+
+<!-- #               alpha = .2) + -->
+
+<!-- #   geom_ribbon(aes( -->
+
+<!-- #     ymax = qlnorm(.75, log(z_l), s_l), -->
+
+<!-- #     ymin = qlnorm(.25, log(z_l), s_l) -->
+
+<!-- #   ), -->
+
+<!-- #   fill = "#FF7F00", -->
+
+<!-- #   alpha = .2) + -->
+
+<!-- #   geom_path(aes(y = qlnorm(.5, log(z_h), s_h)), -->
+
+<!-- #             colour = "#008080", -->
+
+<!-- #             linetype = "dashed") + -->
+
+<!-- #   geom_path(aes(y = qlnorm(.5, log(z_l), s_l)), -->
+
+<!-- #             colour = "#FF7F00", -->
+
+<!-- #             linetype = "dashed") + -->
+
+<!-- #   geom_path(aes(y = y, x = x, -->
+
+<!-- #                 colour = "Lynx"), size = 1, data = data.frame(y = c(pp_set$generated$y_init[2], pp_set$generated$y[,2]), x = lynx_hare_df$Year) ) + -->
+
+<!-- #   geom_path(aes(y = y, x = x, -->
+
+<!-- #                 colour = "Hare"), size = 1, data = data.frame(y = c(pp_set$generated$y_init[1], pp_set$generated$y[,1]), x = lynx_hare_df$Year)) + -->
+
+<!-- #   theme(legend.position = "inside", -->
+
+<!-- #         legend.position.inside = c(.8, .95)) + -->
+
+<!-- #   labs(y = "Pelts", x = "", colour = "") + scale_colour_manual(values = c("#008080", "#FF7F00")) + -->
+
+<!-- #   theme_default(base_size = 32, base_family = "Sans") + theme(legend.position = "none") + -->
+
+<!-- #   transition_states(sim_id, -->
+
+<!-- #                     transition_length = 2, -->
+
+<!-- #                     state_length = 1) -> p -->
+
+<!-- ggplot(post_draws, mapping = aes(x = year)) + -->
+
+<!--   geom_path(aes(y = rlnorm(length(z_h), log(z_h), s_h), group = sim_id), colour = "#008080", linetype = "dashed") + -->
+
+<!--   geom_path(aes(y = rlnorm(length(z_l), log(z_l), s_l), group = sim_id), colour = "#FF7F00", linetype = "dashed") + -->
+
+<!--   geom_path(aes(y = y, x = x, -->
+
+<!--                 colour = "Lynx"), size = 1, data = data.frame(y = c(pp_set$generated$y_init[2], pp_set$generated$y[,2]), x = lynx_hare_df$Year) ) + -->
+
+<!--   geom_path(aes(y = y, x=x, -->
+
+<!--                 colour = "Hare"), size = 1, data = data.frame(y = c(pp_set$generated$y_init[1], pp_set$generated$y[,1]), x = lynx_hare_df$Year)) + -->
+
+<!--   theme(legend.position = "inside", -->
+
+<!--         legend.position.inside = c(.8,.95)) + -->
+
+<!--   labs(y = "Pelts", x = "", colour = "") + scale_colour_manual(values = c("#008080", "#FF7F00")) + theme_default(base_size = 32, base_family = "Sans") + theme(legend.position = "none") + -->
+
+<!--   coord_cartesian(ylim = c(0,200), clip = "off") + -->
+
+<!--   transition_states(sim_id, -->
+
+<!--                     transition_length = .5, -->
+
+<!--                     state_length = 1) -> p -->
+
+<!-- gganimate::anim_save("prior_pred_fit.gif", p) -->
+
+<!-- ``` -->
+
+<!-- ![](prior_pred_fit.gif) -->
+:::
+:::
+:::
+
+[^1]: [@modrak][: Joint log-likelihood is a good test statistic.{.fragment fragment-index=4}]{.fragment fragment-index="4"}
+
+------------------------------------------------------------------------
+
+### Uniformity assessment
+
+
+We recommend graphical uniformity testing. [@sailynoja]
+
+```{r}
+res <- readRDS("results-prior_sbc-pth-n_iter_250seed_845.rds")$result
+ppc_pit_ecdf(pit = unlist(res$stats[res$stats$variable == "loglik","rank"] / res$stats[res$stats$variable == "loglik","max_rank"]), plot_diff = T)
+```
+
+
+<!-- ![](assets/prior-sbc-results.png) -->
+
+------------------------------------------------------------------------
+
+### Posterior predictive sampels
+
+
+```{r}
+n_post_draws <- 9
+post_draws <- data.frame(
+  z_h = c(fit_obs$draws("z_init[1]", format = "matrix")[1:n_post_draws,], fit_obs$draws(paste("z[", 1:20, ",1]", sep = ""), format = "matrix")[1:n_post_draws,]),
+  sim_id = rep(1:n_post_draws, 21),
+  year = rep(lynx_hare_df$Year, each = n_post_draws),
+z_l = c(fit_obs$draws("z_init[2]", format = "matrix")[1:n_post_draws,], fit_obs$draws(paste("z[", 1:20, ",2]", sep = ""), format = "matrix")[1:n_post_draws,]),
+s_h = fit_obs$draws("sigma[1]", format = "matrix")[1:n_post_draws,] |> unname(),
+s_l = fit_obs$draws("sigma[2]", format = "matrix")[1:n_post_draws,] |> unname()
+)
+
+ggplot(post_draws, mapping = aes(x = year)) +
+  geom_path(aes(y = rlnorm(length(z_h), log(z_h), s_h)),
+            colour = "#008080",
+            linetype = "dashed") +
+  geom_path(aes(y = rlnorm(length(z_l), log(z_l), s_l)),
+            colour = "#FF7F00",
+            linetype = "dashed") +
+  geom_path(aes(y = y, x = x,
+                colour = "Lynx"), data = data.frame(y = lynx_hare_df$Lynx, x = lynx_hare_df$Year) ) +
+  geom_path(aes(y = y, x = x,
+                colour = "Hare"), data = data.frame(y = lynx_hare_df$Hare, x = lynx_hare_df$Year)) +
+  theme(legend.position = "inside",
+        legend.position.inside = c(.8, .95)) +
+  labs(y = "Pelts", x = "", colour = "") +
+  scale_colour_manual(values = c("#008080", "#FF7F00")) +
+  theme_default(base_size = 20, base_family = "Sans") +
+  theme(legend.position = "none") +
+  facet_wrap(vars(sim_id), nrow = 3, scales = "free_y")
+```
+
+------------------------------------------------------------------------
+
+### Posterior SBC
+
+
+Our version of SBC focusing on calibration checking with a [specific data set]{style="color:orange;"}.
+
+::: {.fragment}
+1.  Fit the model on some observation $\color{orange}{y_{obs}}$.
+2.  Draw parameters from posterior $\theta \sim \pi(\theta|\color{orange}{y_{obs}})$
+3.  Generate new data $y \sim p(y|\theta)$.
+4.  Estimate new posterior $p(\theta'|y,\color{orange}{y_{obs}})$
+5.  Compare $\theta$ and $\theta'$.
+5.  Repeat 1. - 4. $M$ times.
+6.  Assess calibration
+
+:::
+
+------------------------------------------------------------------------
+
+### Uniformity Assessment - Posterior SBC
+
+```{r}
+res <- readRDS("results-posterior_sbc_pth_init_seed_6758.rds")$result
+ppc_pit_ecdf(pit = unlist(res$stats[res$stats$variable == "log_lik","rank"] / res$stats[res$stats$variable == "log_lik","max_rank"]), plot_diff = T)
+```
+
+------------------------------------------------------------------------
+
+### Summary
+
+-   Calibration checking is an important part of model building workflow.
+-   Traditional SBC can depend heavily on a sensible prior choices.
+
+### Our work
+- Posterior SBC focuses on assessing calibration with a given data set.
+    - Can find issues missed with traditional SBC.
+    - Focuses computation to values that are plausible given data.
+
+---
+
+### References
+
+::: {#refs}
+:::
+
+------------------------------------------------------------------------
+
+### Posterior predictive means
+
+```{r}
+ggplot(post_draws, mapping = aes(x = year)) +
+  geom_path(aes(y = qlnorm(.5, log(z_h), s_h)),
+            colour = "#008080",
+            linetype = "dashed") +
+  geom_path(aes(y = qlnorm(.5, log(z_l), s_l)),
+            colour = "#FF7F00",
+            linetype = "dashed") +
+  geom_path(aes(y = y, x = x,
+                colour = "Lynx"), data = data.frame(y = lynx_hare_df$Lynx, x = lynx_hare_df$Year) ) +
+  geom_path(aes(y = y, x = x,
+                colour = "Hare"), data = data.frame(y = lynx_hare_df$Hare, x = lynx_hare_df$Year)) +
+  # theme(legend.position = "inside",
+  #       legend.position.inside = c(.8, .95)) +
+  labs(y = "Pelts", x = "", colour = "") + scale_colour_manual(values = c("#008080", "#FF7F00")) + theme_default(base_size = 24, base_family = "Sans") +
+  facet_wrap(vars(sim_id), nrow = 3, scales = "free_y")
+```
